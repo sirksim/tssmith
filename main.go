@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"database/sql"
+	"flag"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -28,14 +31,27 @@ type Table struct {
 }
 
 func main() {
-	db, err := sql.Open("sqlite3", "./test.db")
+
+	out := flag.String("out", "types.d.ts", "Output file")
+	flag.Parse()
+
+	if flag.NArg() == 0 {
+		log.Fatal("database file not provided")
+	}
+	file := flag.Arg(0)
+
+	_, err := (os.Stat(file))
+	if err != nil || os.IsNotExist(err) {
+		log.Fatal(err)
+	}
+
+	db, err := sql.Open("sqlite3", file)
 	if err != nil {
 		log.Fatal("Could not open db: ", err)
 	}
 	defer db.Close()
 
 	stmt := "SELECT * FROM sqlite_master WHERE name not like 'sqlite%' and type = 'table' OR type='view'"
-
 	rows, err := db.Query(stmt)
 	if err != nil {
 		log.Fatal("Could not get info of db", err)
@@ -54,7 +70,6 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer rows2.Close()
 		var info TableInfo
 		for rows2.Next() {
 			err = rows2.Scan(
@@ -65,18 +80,27 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			// fmt.Printf("info %#v\n", info)
 			table.info = append(table.info, info)
+			rows2.Close()
 		}
 		tables = append(tables, table)
 	}
-	for _, table := range tables {
-		to_ts_class(table)
+
+	f, err := os.Create(*out)
+	if err != nil {
+		log.Fatal(err)
 	}
+	defer f.Close()
+	w := bufio.NewWriter(f)
+	for _, table := range tables {
+		generateTSType(w, table)
+	}
+	w.Flush()
 }
 
-func to_ts_class(table Table) {
-	fmt.Printf("type %s = {\n", table.name)
+func generateTSType(w *bufio.Writer, table Table) {
+
+	fmt.Fprintf(w, "type %s = {\n", table.name)
 	for _, col := range table.info {
 		optinal_char := ""
 		pk_comment := ""
@@ -86,9 +110,9 @@ func to_ts_class(table Table) {
 		if col.pk == 1 {
 			pk_comment = (" // PK")
 		}
-		fmt.Printf("%s%s: %s;%s\n", col.name, optinal_char, sqliteTypeToTs(col), pk_comment)
+		fmt.Fprintf(w, "%s%s: %s;%s\n", col.name, optinal_char, sqliteTypeToTs(col), pk_comment)
 	}
-	fmt.Print("}\n")
+	fmt.Fprint(w, "}\n\n")
 }
 
 func sqliteTypeToTs(info TableInfo) string {

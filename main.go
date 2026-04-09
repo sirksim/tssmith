@@ -19,6 +19,7 @@ type TableInfo struct {
 	notnull    int
 	dflt_value *string
 	pk         int
+	hidden     int
 }
 
 type Table struct {
@@ -65,7 +66,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		stmt := fmt.Sprintf("PRAGMA table_info(%q)", table.name)
+		stmt := fmt.Sprintf("PRAGMA table_xinfo(%q)", table.name)
 		rows2, err := db.Query(stmt)
 		if err != nil {
 			log.Fatal(err)
@@ -76,13 +77,14 @@ func main() {
 				&info.cid, &info.name,
 				&info.c_type, &info.notnull,
 				&info.dflt_value, &info.pk,
+				&info.hidden,
 			)
 			if err != nil {
 				log.Fatal(err)
 			}
 			table.info = append(table.info, info)
-			rows2.Close()
 		}
+		rows2.Close()
 		tables = append(tables, table)
 	}
 
@@ -98,13 +100,17 @@ func main() {
 	w.Flush()
 }
 
+func isNullable(col TableInfo) bool {
+	return col.notnull == 0 && col.pk == 0 && col.hidden == 0
+}
+
 func generateTSType(w *bufio.Writer, table Table) {
 
 	fmt.Fprintf(w, "type %s = {\n", table.name)
 	for _, col := range table.info {
 		optinal_char := ""
 		pk_comment := ""
-		if col.notnull == 0 && col.pk == 0 {
+		if isNullable(col) {
 			optinal_char = "?"
 		}
 		if col.pk == 1 {

@@ -81,8 +81,8 @@ func main() {
 				log.Fatal(err)
 			}
 			table.info = append(table.info, info)
-			rows2.Close()
 		}
+		rows2.Close()
 		tables = append(tables, table)
 	}
 
